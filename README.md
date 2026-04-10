@@ -22,7 +22,7 @@ Add material-engine as a git submodule in your project:
 
 ```bash
 git submodule add <repo-url> material-engine
-git submodule update --init --recursive
+git submodule update --init  # not --recursive; your project already has vcpkg
 ```
 
 In your root `CMakeLists.txt`, find the required packages and then add the subdirectory:
@@ -64,4 +64,4 @@ This means:
 
 - **The parent's `vcpkg.json` must include all dependencies that material-engine requires.** See the dependency table above.
 - If material-engine adds a new dependency, the parent must add it to its own `vcpkg.json` as well.
-- Material-engine's nested `vcpkg/` submodule is not initialized when cloned non-recursively (the typical case for submodule consumers), so it adds no disk overhead.
+- When adding material-engine as a submodule, use `git submodule update --init` (not `--recursive`) to avoid pulling a redundant copy of vcpkg. Material-engine's nested `vcpkg/` submodule is only needed for standalone builds.
