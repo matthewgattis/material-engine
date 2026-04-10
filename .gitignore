@@ -1,0 +1,7 @@
+build/
+build-release/
+vcpkg_installed/
+vcpkg-manifest-install.log
+.cache/
+compile_commands.json
+imgui.ini
