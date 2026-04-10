@@ -55,3 +55,13 @@ Linking against `glass` transitively brings in `steel` and all of its dependenci
 | Dear ImGui | Debug UI overlay |
 | OpenXR | VR headset support |
 | shaderc | GLSL to SPIR-V compilation (build-time) |
+
+### vcpkg and Submodule Dependency Management
+
+Material-engine ships its own `vcpkg.json` manifest and `vcpkg/` submodule for standalone development and testing. When consumed as a submodule via `add_subdirectory()`, these are ignored — the parent project's vcpkg manifest and toolchain are used instead. Material-engine detects this (`CMAKE_SOURCE_DIR != CMAKE_CURRENT_SOURCE_DIR`) and skips all `find_package()` calls, relying on the parent to have already found the packages.
+
+This means:
+
+- **The parent's `vcpkg.json` must include all dependencies that material-engine requires.** See the dependency table above.
+- If material-engine adds a new dependency, the parent must add it to its own `vcpkg.json` as well.
+- Material-engine's nested `vcpkg/` submodule is not initialized when cloned non-recursively (the typical case for submodule consumers), so it adds no disk overhead.

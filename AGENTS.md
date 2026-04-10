@@ -149,4 +149,4 @@ Each subdirectory has its own `CMakeLists.txt`.
 - New glass features: add files under `glass/src/` and `glass/include/glass/`, update `glass/CMakeLists.txt`
 - New tests: add `.cpp` files under `test/`, update `test/CMakeLists.txt`
 - New engine shaders: add `.vert`/`.frag` under `steel/shaders/`, update `steel/CMakeLists.txt` to compile and embed them
-- New dependencies: add to `vcpkg.json`, `find_package()` in top-level CMakeLists.txt (guarded by standalone check), link in the appropriate subdirectory
+- New dependencies: add to `vcpkg.json`, `find_package()` in top-level CMakeLists.txt (guarded by standalone check), link in the appropriate subdirectory. **Parent projects consuming material-engine as a submodule must also add the dependency to their own `vcpkg.json`** — material-engine's manifest is only used for standalone builds.
