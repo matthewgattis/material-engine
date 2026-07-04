@@ -27,14 +27,20 @@ void ImGuiPass::create(const vk::raii::Instance& instance,
     create_render_pass(device, surface_format);
     create_framebuffers(device, extent, swapchain_image_views);
 
-    // Create a dedicated descriptor pool for ImGui
-    std::array<vk::DescriptorPoolSize, 1> pool_sizes = {{
-        {.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1},
+    // Create a dedicated descriptor pool for ImGui. Since 1.92.8 the Vulkan
+    // backend uses separate sampler and sampled-image descriptors (one set
+    // each) instead of a single combined image sampler.
+    std::array<vk::DescriptorPoolSize, 2> pool_sizes = {{
+        {.type = vk::DescriptorType::eSampler,
+         .descriptorCount = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE},
+        {.type = vk::DescriptorType::eSampledImage,
+         .descriptorCount = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE},
     }};
 
     vk::DescriptorPoolCreateInfo pool_info{
         .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-        .maxSets = 1,
+        .maxSets = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE
+                 + IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE,
         .poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
         .pPoolSizes = pool_sizes.data(),
     };
@@ -106,8 +112,13 @@ void ImGuiPass::render(const vk::raii::CommandBuffer& cmd,
         .renderArea = vk::Rect2D{.offset = {0, 0}, .extent = extent},
     };
 
+    // The render pass must still run for the layout transition to
+    // ePresentSrcKHR, but draw data is null until the first
+    // begin()/end() pair has called ImGui::Render().
     cmd.beginRenderPass(imgui_rp_info, vk::SubpassContents::eInline);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *cmd);
+    if (ImDrawData* draw_data = ImGui::GetDrawData()) {
+        ImGui_ImplVulkan_RenderDrawData(draw_data, *cmd);
+    }
     cmd.endRenderPass();
 }
 
