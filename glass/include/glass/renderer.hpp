@@ -10,6 +10,7 @@
 #include <glm/vec3.hpp>
 
 #include <array>
+#include <memory>
 
 namespace glass {
 
@@ -30,26 +31,26 @@ public:
     void run(World& world);
     void render_frame(World& world);
 
-    // Render both eyes into XR swapchains. Call between
-    // engine.begin_command_buffer() and engine.end_frame().
+    const vk::raii::DescriptorSetLayout& frame_descriptor_layout() const { return frame_ubo_.layout(); }
+
+    // XR management
+    void init_xr(World& world);
+    void shutdown_xr();
+    bool xr_active() const { return xr_system_ && xr_system_->active(); }
+    steel::XrSystem* xr_system() const { return xr_system_.get(); }
+    Entity xr_head() const { return xr_head_; }
+
+private:
     void render_xr_eyes(const vk::raii::CommandBuffer& cmd,
                         World& world,
                         uint32_t frame_index,
-                        steel::XrFrameState& frame_state,
-                        steel::XrSystem& xr);
+                        steel::XrFrameState& frame_state);
 
-    // Render desktop companion view. Called when begin_scene_pass() has
-    // already started the offscreen render pass (XR dual-path mode).
-    // When xr_view is provided, the mirror matches the headset instead of
-    // using the CameraController's orientation.
     void render_desktop_companion(const vk::raii::CommandBuffer& cmd,
                                   World& world,
                                   uint32_t frame_index,
                                   const glm::mat4* xr_view = nullptr);
 
-    const vk::raii::DescriptorSetLayout& frame_descriptor_layout() const { return frame_ubo_.layout(); }
-
-private:
     void render_ecs(const vk::raii::CommandBuffer& cmd,
                     World& world,
                     uint32_t frame_index,
@@ -57,12 +58,13 @@ private:
 
     steel::Engine& engine_;
     steel::UniformBuffer<FrameUBO> frame_ubo_;
-    // Separate UBOs per XR eye so each eye has its own buffer.
-    // Without these, both eyes and the desktop companion would write to the
-    // same mapped buffer (frame_ubo_), and only the last memcpy would survive
-    // by the time the GPU executes the recorded command buffer.
     std::array<steel::UniformBuffer<FrameUBO>, 2> xr_eye_ubos_;
     Entity camera_{null_entity};
+
+    // XR state
+    std::unique_ptr<steel::XrSystem> xr_system_;
+    Entity xr_head_{null_entity};
+    World* world_{nullptr};
 };
 
 } // namespace glass
