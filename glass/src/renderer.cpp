@@ -16,12 +16,11 @@ Renderer::Renderer(steel::Engine& engine)
               engine_, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment)} {}
 
 void Renderer::bind_world(World& world) {
-    world.set_on_destroy([this](World& w, Entity e) {
-        if (w.has<GeometryComponent>(e)) {
-            auto& mesh = w.get<GeometryComponent>(e);
-            if (mesh.geometry) {
-                engine_.defer_destroy(std::move(mesh.geometry));
-            }
+    // GPU buffers must outlive in-flight frames; salvage the geometry on any
+    // removal path (component remove or entity destroy) and defer destruction.
+    world.on_destroy<GeometryComponent>([this](Entity, GeometryComponent& mesh) {
+        if (mesh.geometry) {
+            engine_.defer_destroy(std::move(mesh.geometry));
         }
     });
 }

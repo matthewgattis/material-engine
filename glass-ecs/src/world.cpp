@@ -24,9 +24,10 @@ void World::destroy(Entity e) {
         return;
     }
 
-    // Fire callback before removing components (lets listeners capture GPU resources)
-    if (on_destroy_) {
-        on_destroy_(*this, e);
+    // Entity-level listeners fire first, with all components still present;
+    // per-component destroy signals then fire as each pool removes.
+    for (auto& listener : entity_destroy_listeners_) {
+        listener(*this, e);
     }
 
     // Remove from all pools

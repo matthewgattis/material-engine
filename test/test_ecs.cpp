@@ -351,7 +351,7 @@ TEST(World, DestroyCallsCallback) {
     World world;
     bool called = false;
     Entity captured = null_entity;
-    world.set_on_destroy([&](World&, Entity e) {
+    world.on_entity_destroy([&](World&, Entity e) {
         called = true;
         captured = e;
     });
@@ -364,13 +364,79 @@ TEST(World, DestroyCallsCallback) {
 TEST(World, DestroyCallbackFiresBeforeComponentRemoval) {
     World world;
     bool had_component = false;
-    world.set_on_destroy([&](World& w, Entity e) {
+    world.on_entity_destroy([&](World& w, Entity e) {
         had_component = w.has<Position>(e);
     });
     Entity e = world.create();
     world.add<Position>(e, Position{42, 0, 0});
     world.destroy(e);
     EXPECT_TRUE(had_component);
+}
+
+TEST(World, MultipleEntityDestroyListeners) {
+    World world;
+    int calls = 0;
+    world.on_entity_destroy([&](World&, Entity) { calls++; });
+    world.on_entity_destroy([&](World&, Entity) { calls++; });
+    world.destroy(world.create());
+    EXPECT_EQ(calls, 2);
+}
+
+TEST(World, OnConstructFiresOnAdd) {
+    World world;
+    Entity captured = null_entity;
+    float captured_x = 0.0f;
+    world.on_construct<Position>([&](Entity e, Position& p) {
+        captured = e;
+        captured_x = p.x;
+    });
+    Entity e = world.create();
+    world.add<Position>(e, Position{7, 0, 0});
+    EXPECT_EQ(captured, e);
+    EXPECT_FLOAT_EQ(captured_x, 7.0f);
+}
+
+TEST(World, OnDestroyFiresOnComponentRemove) {
+    World world;
+    int calls = 0;
+    world.on_destroy<Position>([&](Entity, Position&) { calls++; });
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    world.remove<Position>(e);
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(World, OnDestroyFiresOnEntityDestroy) {
+    World world;
+    int calls = 0;
+    world.on_destroy<Position>([&](Entity, Position& p) {
+        calls++;
+        EXPECT_FLOAT_EQ(p.x, 3.0f); // component still intact
+    });
+    Entity e = world.create();
+    world.add<Position>(e, Position{3, 0, 0});
+    world.destroy(e);
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(World, OnDestroyCanSalvageMoveOnlyComponent) {
+    World world;
+    std::string salvaged;
+    world.on_destroy<Name>([&](Entity, Name& n) { salvaged = std::move(n.value); });
+    Entity e = world.create();
+    world.add<Name>(e, Name{"precious"});
+    world.destroy(e);
+    EXPECT_EQ(salvaged, "precious");
+}
+
+TEST(World, SignalsDoNotFireForOtherComponentTypes) {
+    World world;
+    int calls = 0;
+    world.on_destroy<Name>([&](Entity, Name&) { calls++; });
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    world.destroy(e);
+    EXPECT_EQ(calls, 0);
 }
 
 TEST(World, PoolReturnsNullptrForUnusedType) {

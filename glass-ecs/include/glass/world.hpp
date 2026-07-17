@@ -19,7 +19,23 @@ public:
     void destroy(Entity e);
     bool alive(Entity e) const;
 
-    void set_on_destroy(DestroyCallback callback) { on_destroy_ = std::move(callback); }
+    // Entity-level destroy listeners fire before any component is removed,
+    // so they can still inspect the dying entity's components.
+    void on_entity_destroy(DestroyCallback callback) {
+        entity_destroy_listeners_.push_back(std::move(callback));
+    }
+
+    // Component-level signals fire on add<T>() and on any removal path
+    // (remove<T>() or entity destroy), with the component still intact.
+    template<typename T>
+    void on_construct(typename ComponentPool<T>::Signal fn) {
+        ensure_pool<T>().on_construct(std::move(fn));
+    }
+
+    template<typename T>
+    void on_destroy(typename ComponentPool<T>::Signal fn) {
+        ensure_pool<T>().on_destroy(std::move(fn));
+    }
 
     template<typename T>
     T& add(Entity e, T&& component) {
@@ -69,7 +85,7 @@ private:
     uint32_t next_index_{0};
 
     std::unordered_map<std::type_index, std::unique_ptr<IComponentPool>> pools_;
-    DestroyCallback on_destroy_;
+    std::vector<DestroyCallback> entity_destroy_listeners_;
 
     template<typename T>
     ComponentPool<T>& ensure_pool() {
