@@ -68,6 +68,20 @@ public:
         return pool && pool->has(e);
     }
 
+    // Like get(), but advances the component's write version. Use for writes
+    // that change-tracking consumers (e.g. replication) need to observe.
+    template<typename T>
+    T& patch(Entity e) {
+        return ensure_pool<T>().bump(e);
+    }
+
+    template<typename T>
+    uint64_t version(Entity e) const {
+        auto* pool = try_pool<T>();
+        assert(pool);
+        return pool->version(e);
+    }
+
     template<typename... Ts>
     View<Ts...> view() {
         return View<Ts...>(*this);

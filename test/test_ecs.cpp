@@ -439,6 +439,56 @@ TEST(World, SignalsDoNotFireForOtherComponentTypes) {
     EXPECT_EQ(calls, 0);
 }
 
+TEST(World, AddStampsVersion) {
+    World world;
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    EXPECT_GT(world.version<Position>(e), 0u);
+}
+
+TEST(World, PatchAdvancesVersion) {
+    World world;
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    auto v0 = world.version<Position>(e);
+    world.patch<Position>(e).x = 5.0f;
+    EXPECT_GT(world.version<Position>(e), v0);
+    EXPECT_FLOAT_EQ(world.get<Position>(e).x, 5.0f);
+}
+
+TEST(World, GetDoesNotAdvanceVersion) {
+    World world;
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    auto v0 = world.version<Position>(e);
+    world.get<Position>(e).x = 5.0f;
+    EXPECT_EQ(world.version<Position>(e), v0);
+}
+
+TEST(World, VersionsSurviveSwapRemove) {
+    World world;
+    Entity e0 = world.create();
+    Entity e1 = world.create();
+    world.add<Position>(e0, Position{});
+    world.add<Position>(e1, Position{});
+    world.patch<Position>(e1);
+    auto v1 = world.version<Position>(e1);
+
+    // Removing e0 swaps e1 into its dense slot; its version must follow.
+    world.remove<Position>(e0);
+    EXPECT_EQ(world.version<Position>(e1), v1);
+}
+
+TEST(World, VersionsAreIndependentPerPool) {
+    World world;
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    world.add<Name>(e, Name{"a"});
+    auto name_v = world.version<Name>(e);
+    world.patch<Position>(e);
+    EXPECT_EQ(world.version<Name>(e), name_v);
+}
+
 TEST(World, PoolReturnsNullptrForUnusedType) {
     World world;
     EXPECT_EQ(world.pool<Position>(), nullptr);
