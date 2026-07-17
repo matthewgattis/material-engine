@@ -1,5 +1,6 @@
 #include <glass/entity.hpp>
 #include <glass/component_pool.hpp>
+#include <glass/system.hpp>
 #include <glass/world.hpp>
 
 #include <gtest/gtest.h>
@@ -603,4 +604,51 @@ TEST(View, IteratesSmallestPool) {
         count++;
     });
     EXPECT_EQ(count, 1);
+}
+
+// ---- Scheduler ----
+
+TEST(Scheduler, RunsOnlyRequestedPhase) {
+    World world;
+    Scheduler sched;
+    int ticks = 0;
+    int renders = 0;
+    sched.add(Phase::Tick, [&](World&, float) { ticks++; });
+    sched.add(Phase::Render, [&](World&, float) { renders++; });
+
+    sched.run(Phase::Tick, world, 0.05f);
+    EXPECT_EQ(ticks, 1);
+    EXPECT_EQ(renders, 0);
+}
+
+TEST(Scheduler, RunsInRegistrationOrder) {
+    World world;
+    Scheduler sched;
+    std::vector<int> order;
+    sched.add(Phase::Tick, [&](World&, float) { order.push_back(1); });
+    sched.add(Phase::Tick, [&](World&, float) { order.push_back(2); });
+    sched.add(Phase::Tick, [&](World&, float) { order.push_back(3); });
+
+    sched.run(Phase::Tick, world, 0.05f);
+    EXPECT_EQ(order, (std::vector<int>{1, 2, 3}));
+}
+
+TEST(Scheduler, PassesWorldAndDt) {
+    World world;
+    Scheduler sched;
+    Entity e = world.create();
+    world.add<Position>(e, Position{0, 0, 0});
+    sched.add(Phase::Tick, [](World& w, float dt) {
+        w.view<Position>().each([&](Entity, Position& p) { p.x += dt; });
+    });
+
+    sched.run(Phase::Tick, world, 0.5f);
+    sched.run(Phase::Tick, world, 0.5f);
+    EXPECT_FLOAT_EQ(world.get<Position>(e).x, 1.0f);
+}
+
+TEST(Scheduler, EmptyPhaseIsNoop) {
+    World world;
+    Scheduler sched;
+    sched.run(Phase::PostTick, world, 0.05f); // should not crash
 }
