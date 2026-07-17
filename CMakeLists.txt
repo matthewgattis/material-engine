@@ -21,6 +21,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     find_package(OpenXR CONFIG REQUIRED)
 endif()
 
+add_subdirectory(glass-ecs)
 add_subdirectory(steel)
 add_subdirectory(glass)
 
