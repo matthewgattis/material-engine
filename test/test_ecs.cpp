@@ -1,5 +1,6 @@
 #include <glass/entity.hpp>
 #include <glass/component_pool.hpp>
+#include <glass/system.hpp>
 #include <glass/world.hpp>
 
 #include <gtest/gtest.h>
@@ -351,7 +352,7 @@ TEST(World, DestroyCallsCallback) {
     World world;
     bool called = false;
     Entity captured = null_entity;
-    world.set_on_destroy([&](World&, Entity e) {
+    world.on_entity_destroy([&](World&, Entity e) {
         called = true;
         captured = e;
     });
@@ -364,13 +365,129 @@ TEST(World, DestroyCallsCallback) {
 TEST(World, DestroyCallbackFiresBeforeComponentRemoval) {
     World world;
     bool had_component = false;
-    world.set_on_destroy([&](World& w, Entity e) {
+    world.on_entity_destroy([&](World& w, Entity e) {
         had_component = w.has<Position>(e);
     });
     Entity e = world.create();
     world.add<Position>(e, Position{42, 0, 0});
     world.destroy(e);
     EXPECT_TRUE(had_component);
+}
+
+TEST(World, MultipleEntityDestroyListeners) {
+    World world;
+    int calls = 0;
+    world.on_entity_destroy([&](World&, Entity) { calls++; });
+    world.on_entity_destroy([&](World&, Entity) { calls++; });
+    world.destroy(world.create());
+    EXPECT_EQ(calls, 2);
+}
+
+TEST(World, OnConstructFiresOnAdd) {
+    World world;
+    Entity captured = null_entity;
+    float captured_x = 0.0f;
+    world.on_construct<Position>([&](Entity e, Position& p) {
+        captured = e;
+        captured_x = p.x;
+    });
+    Entity e = world.create();
+    world.add<Position>(e, Position{7, 0, 0});
+    EXPECT_EQ(captured, e);
+    EXPECT_FLOAT_EQ(captured_x, 7.0f);
+}
+
+TEST(World, OnDestroyFiresOnComponentRemove) {
+    World world;
+    int calls = 0;
+    world.on_destroy<Position>([&](Entity, Position&) { calls++; });
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    world.remove<Position>(e);
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(World, OnDestroyFiresOnEntityDestroy) {
+    World world;
+    int calls = 0;
+    world.on_destroy<Position>([&](Entity, Position& p) {
+        calls++;
+        EXPECT_FLOAT_EQ(p.x, 3.0f); // component still intact
+    });
+    Entity e = world.create();
+    world.add<Position>(e, Position{3, 0, 0});
+    world.destroy(e);
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(World, OnDestroyCanSalvageMoveOnlyComponent) {
+    World world;
+    std::string salvaged;
+    world.on_destroy<Name>([&](Entity, Name& n) { salvaged = std::move(n.value); });
+    Entity e = world.create();
+    world.add<Name>(e, Name{"precious"});
+    world.destroy(e);
+    EXPECT_EQ(salvaged, "precious");
+}
+
+TEST(World, SignalsDoNotFireForOtherComponentTypes) {
+    World world;
+    int calls = 0;
+    world.on_destroy<Name>([&](Entity, Name&) { calls++; });
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    world.destroy(e);
+    EXPECT_EQ(calls, 0);
+}
+
+TEST(World, AddStampsVersion) {
+    World world;
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    EXPECT_GT(world.version<Position>(e), 0u);
+}
+
+TEST(World, PatchAdvancesVersion) {
+    World world;
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    auto v0 = world.version<Position>(e);
+    world.patch<Position>(e).x = 5.0f;
+    EXPECT_GT(world.version<Position>(e), v0);
+    EXPECT_FLOAT_EQ(world.get<Position>(e).x, 5.0f);
+}
+
+TEST(World, GetDoesNotAdvanceVersion) {
+    World world;
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    auto v0 = world.version<Position>(e);
+    world.get<Position>(e).x = 5.0f;
+    EXPECT_EQ(world.version<Position>(e), v0);
+}
+
+TEST(World, VersionsSurviveSwapRemove) {
+    World world;
+    Entity e0 = world.create();
+    Entity e1 = world.create();
+    world.add<Position>(e0, Position{});
+    world.add<Position>(e1, Position{});
+    world.patch<Position>(e1);
+    auto v1 = world.version<Position>(e1);
+
+    // Removing e0 swaps e1 into its dense slot; its version must follow.
+    world.remove<Position>(e0);
+    EXPECT_EQ(world.version<Position>(e1), v1);
+}
+
+TEST(World, VersionsAreIndependentPerPool) {
+    World world;
+    Entity e = world.create();
+    world.add<Position>(e, Position{});
+    world.add<Name>(e, Name{"a"});
+    auto name_v = world.version<Name>(e);
+    world.patch<Position>(e);
+    EXPECT_EQ(world.version<Name>(e), name_v);
 }
 
 TEST(World, PoolReturnsNullptrForUnusedType) {
@@ -487,4 +604,51 @@ TEST(View, IteratesSmallestPool) {
         count++;
     });
     EXPECT_EQ(count, 1);
+}
+
+// ---- Scheduler ----
+
+TEST(Scheduler, RunsOnlyRequestedPhase) {
+    World world;
+    Scheduler sched;
+    int ticks = 0;
+    int renders = 0;
+    sched.add(Phase::Tick, [&](World&, float) { ticks++; });
+    sched.add(Phase::Render, [&](World&, float) { renders++; });
+
+    sched.run(Phase::Tick, world, 0.05f);
+    EXPECT_EQ(ticks, 1);
+    EXPECT_EQ(renders, 0);
+}
+
+TEST(Scheduler, RunsInRegistrationOrder) {
+    World world;
+    Scheduler sched;
+    std::vector<int> order;
+    sched.add(Phase::Tick, [&](World&, float) { order.push_back(1); });
+    sched.add(Phase::Tick, [&](World&, float) { order.push_back(2); });
+    sched.add(Phase::Tick, [&](World&, float) { order.push_back(3); });
+
+    sched.run(Phase::Tick, world, 0.05f);
+    EXPECT_EQ(order, (std::vector<int>{1, 2, 3}));
+}
+
+TEST(Scheduler, PassesWorldAndDt) {
+    World world;
+    Scheduler sched;
+    Entity e = world.create();
+    world.add<Position>(e, Position{0, 0, 0});
+    sched.add(Phase::Tick, [](World& w, float dt) {
+        w.view<Position>().each([&](Entity, Position& p) { p.x += dt; });
+    });
+
+    sched.run(Phase::Tick, world, 0.5f);
+    sched.run(Phase::Tick, world, 0.5f);
+    EXPECT_FLOAT_EQ(world.get<Position>(e).x, 1.0f);
+}
+
+TEST(Scheduler, EmptyPhaseIsNoop) {
+    World world;
+    Scheduler sched;
+    sched.run(Phase::PostTick, world, 0.05f); // should not crash
 }

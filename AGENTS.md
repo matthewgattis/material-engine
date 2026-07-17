@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Material Engine is a reusable Vulkan engine library using C++23 with CMake and vcpkg. Two-layer architecture: `steel` (Vulkan RAII wrappers + OpenXR) -> `glass` (engine abstractions with ECS, event dispatch, rendering). Designed to be consumed as a git submodule by application projects. Always-on FXAA 3.11 anti-aliasing and Dear ImGui debug overlay are applied as post-processing passes on the desktop view inside `steel::Engine`.
+Material Engine is a reusable Vulkan engine library using C++23 with CMake and vcpkg. Three targets: `glass-ecs` (dependency-free ECS core, links only glm) -> `steel` (Vulkan RAII wrappers + OpenXR) -> `glass` (engine abstractions with event dispatch and rendering, links glass-ecs + steel). Headless consumers (game servers, tools) can link `glass-ecs` alone without pulling in Vulkan/SDL. Designed to be consumed as a git submodule by application projects. Always-on FXAA 3.11 anti-aliasing and Dear ImGui debug overlay are applied as post-processing passes on the desktop view inside `steel::Engine`.
 
 ## Build
 
@@ -27,6 +27,7 @@ When added via `add_subdirectory()`, the parent project is responsible for calli
 ## Code Organization
 
 - **Top-level CMakeLists.txt**: Finds packages (standalone only) and adds subdirectories. Do not add targets here.
+- **glass-ecs/**: Dependency-free ECS core (entity, component pools, world, views, scheduler, sim components). Namespace `glass`. Links only against glm. Safe for headless/server use.
 - **steel/**: Vulkan RAII engine library. Namespace `steel`. Links against Vulkan, GLM, SDL3, spdlog, imgui, VMA, OpenXR.
 - **glass/**: Engine abstraction layer. Namespace `glass`. Links against `steel`. Provides meshes, materials, ECS (Entity Component System), event dispatch, and rendering abstractions built on top of steel's Vulkan wrappers.
 - **test/**: Google Test suite. Links against `steel`, `glass`, and GTest. Built when `MATERIAL_ENGINE_BUILD_TESTS=ON`.
@@ -113,7 +114,7 @@ Each subdirectory has its own `CMakeLists.txt`.
 
 ### glass::Renderer
 - `Renderer(engine)` — creates per-frame UBO with separate view and projection matrices
-- `bind_world(world)` — registers pre-destroy callback for automatic GPU resource cleanup
+- `bind_world(world)` — subscribes to `GeometryComponent` destroy signals for automatic deferred GPU resource cleanup
 - `set_camera(entity)` — sets the active camera entity
 - `render_frame(world)` — desktop rendering path
 - `render_xr_eyes(cmd, world, frame_index, frame_state, xr)` — stereo XR rendering
@@ -122,16 +123,19 @@ Each subdirectory has its own `CMakeLists.txt`.
 - `FrameUBO` — `mat4 view` + `mat4 projection`
 
 ### glass::Components
-- `Transform` — `glm::mat4 matrix` (default identity)
-- `GeometryComponent` — `std::unique_ptr<Geometry>` (owns GPU buffers)
-- `MaterialComponent` — `const Material*` (non-owning)
-- `Velocity` — `glm::vec3 linear` (default zero)
-- `CameraComponent` — `Camera camera`
+- Sim components (glass-ecs, `glass/transform.hpp`): `Transform` — `glm::mat4 matrix` (default identity); `Velocity` — `glm::vec3 linear` (default zero)
+- Render components (glass, `glass/components.hpp`, which re-exports the sim components): `GeometryComponent` — `std::unique_ptr<Geometry>` (owns GPU buffers); `MaterialComponent` — `const Material*` (non-owning); `CameraComponent` — `Camera camera`
 
-### glass::Entity, World, View
+### glass::Entity, World, View (glass-ecs)
 - `Entity` — lightweight handle: `uint32_t index` + `uint32_t generation`
-- `World` — entity manager with create/destroy, component operations (`add`, `remove`, `get`, `has`), `view<Ts...>()` for multi-component queries. Supports `set_on_destroy(callback)`.
+- `World` — entity manager with create/destroy, component operations (`add`, `remove`, `get`, `has`), `view<Ts...>()` for multi-component queries
+- Signals: `on_construct<T>(fn)` / `on_destroy<T>(fn)` fire `(Entity, T&)` with the component intact on add and on every removal path; `on_entity_destroy(fn)` listeners fire `(World&, Entity)` before any component is removed. All support multiple subscribers.
+- Change tracking: `patch<T>(e)` returns `T&` and advances the component's monotonic write version; `version<T>(e)` reads it; plain `get()` is untracked
 - `View<Ts...>` — iterates smallest pool, filters by all requested types, `each(fn)` callback
+
+### glass::Phase, Scheduler (glass-ecs)
+- `Phase` — `PreTick`/`Tick`/`PostTick` (fixed-rate sim) and `PreRender`/`Render` (per displayed frame)
+- `Scheduler` — `add(phase, fn)` registers a `void(World&, float dt)` callable; `run(phase, world, dt)` invokes that phase's systems in registration order (deterministic)
 
 ### glass::Material
 - `Material::create(engine, vertex_shader, fragment_shader, frame_descriptor_layout)` — pipeline layout includes descriptor set layout at set 0 and push constant range for model matrix
@@ -147,6 +151,7 @@ Each subdirectory has its own `CMakeLists.txt`.
 
 - New steel features: add files under `steel/src/` and `steel/include/steel/`, update `steel/CMakeLists.txt`
 - New glass features: add files under `glass/src/` and `glass/include/glass/`, update `glass/CMakeLists.txt`
+- New ECS features: add files under `glass-ecs/include/glass/` (and `glass-ecs/src/`), update `glass-ecs/CMakeLists.txt`. Keep `glass-ecs` free of steel/SDL/Vulkan includes.
 - New tests: add `.cpp` files under `test/`, update `test/CMakeLists.txt`
 - New engine shaders: add `.vert`/`.frag` under `steel/shaders/`, update `steel/CMakeLists.txt` to compile and embed them
 - New dependencies: add to `vcpkg.json`, `find_package()` in top-level CMakeLists.txt (guarded by standalone check), link in the appropriate subdirectory. **Parent projects consuming material-engine as a submodule must also add the dependency to their own `vcpkg.json`** — material-engine's manifest is only used for standalone builds.

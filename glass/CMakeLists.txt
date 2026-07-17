@@ -8,7 +8,6 @@ target_sources(glass PRIVATE
     src/geometry.cpp
     src/material.cpp
     src/renderer.cpp
-    src/world.cpp
 )
 
 target_include_directories(glass PUBLIC
@@ -16,6 +15,7 @@ target_include_directories(glass PUBLIC
 )
 
 target_link_libraries(glass PUBLIC
+    glass-ecs
     steel
     glm::glm
 )
