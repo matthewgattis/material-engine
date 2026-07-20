@@ -6,6 +6,7 @@ target_sources(glass PRIVATE
     src/vertex.cpp
     src/shader.cpp
     src/geometry.cpp
+    src/geometry_cache.cpp
     src/material.cpp
     src/renderer.cpp
 )
