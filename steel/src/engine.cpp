@@ -189,6 +189,10 @@ bool Engine::poll_events() {
             framebuffer_resized_ = true;
         }
 
+        // ImGui sees every event first, so app callbacks can consult
+        // io.WantCaptureMouse/WantCaptureKeyboard to avoid click-through.
+        imgui_pass_.process_event(event);
+
         if (event_callback_) {
             event_callback_(event);
         }
