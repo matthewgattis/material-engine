@@ -9,8 +9,11 @@
 
 namespace glass {
 
+// Shared, immutable GPU geometry: many entities may reference one upload.
+// Handles from GeometryCache defer GPU destruction until in-flight frames
+// retire, so dropping the last reference is safe at any point in a frame.
 struct GeometryComponent {
-    std::unique_ptr<Geometry> geometry;
+    std::shared_ptr<const Geometry> geometry;
 };
 
 struct MaterialComponent {

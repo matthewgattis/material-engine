@@ -123,6 +123,8 @@ void ImGuiPass::render(const vk::raii::CommandBuffer& cmd,
 }
 
 void ImGuiPass::process_event(const SDL_Event& event) {
+    if (!initialized_) return;
+
     ImGui_ImplSDL3_ProcessEvent(&event);
 }
 

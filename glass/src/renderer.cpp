@@ -20,14 +20,10 @@ Renderer::Renderer(steel::Engine& engine)
               engine_, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment)} {}
 
 void Renderer::bind_world(World& world) {
+    // GPU cleanup needs no subscription here: GeometryComponent handles carry
+    // a deferred-destroy deleter (see GeometryCache), so releasing the last
+    // reference is safe on any path.
     world_ = &world;
-    // GPU buffers must outlive in-flight frames; salvage the geometry on any
-    // removal path (component remove or entity destroy) and defer destruction.
-    world.on_destroy<GeometryComponent>([this](Entity, GeometryComponent& mesh) {
-        if (mesh.geometry) {
-            engine_.defer_destroy(std::move(mesh.geometry));
-        }
-    });
 }
 
 void Renderer::run(World& world) {

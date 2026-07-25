@@ -114,7 +114,7 @@ Each subdirectory has its own `CMakeLists.txt`.
 
 ### glass::Renderer
 - `Renderer(engine)` — creates per-frame UBO with separate view and projection matrices
-- `bind_world(world)` — subscribes to `GeometryComponent` destroy signals for automatic deferred GPU resource cleanup
+- `bind_world(world)` — stores the world pointer for XR head-entity management; GPU cleanup is handled by GeometryCache handle deleters, not renderer subscriptions
 - `set_camera(entity)` — sets the active camera entity
 - `render_frame(world)` — desktop rendering path
 - `render_xr_eyes(cmd, world, frame_index, frame_state, xr)` — stereo XR rendering
@@ -124,7 +124,7 @@ Each subdirectory has its own `CMakeLists.txt`.
 
 ### glass::Components
 - Sim components (glass-ecs, `glass/transform.hpp`): `Transform` — `glm::mat4 matrix` (default identity); `Velocity` — `glm::vec3 linear` (default zero)
-- Render components (glass, `glass/components.hpp`, which re-exports the sim components): `GeometryComponent` — `std::unique_ptr<Geometry>` (owns GPU buffers); `MaterialComponent` — `const Material*` (non-owning); `CameraComponent` — `Camera camera`
+- Render components (glass, `glass/components.hpp`, which re-exports the sim components): `GeometryComponent` — `std::shared_ptr<const Geometry>` (shared handle from `GeometryCache`; deleter defers GPU destruction); `MaterialComponent` — `const Material*` (non-owning); `CameraComponent` — `Camera camera`
 
 ### glass::Entity, World, View (glass-ecs)
 - `Entity` — lightweight handle: `uint32_t index` + `uint32_t generation`
@@ -144,6 +144,7 @@ Each subdirectory has its own `CMakeLists.txt`.
 ### glass::Mesh, Geometry, Shader, Vertex
 - `Mesh` — abstract interface: `vertices()`, `indices()`
 - `Geometry::create(engine, mesh)` — uploads mesh to GPU via staging buffers. `bind(cmd)`, `draw(cmd)`.
+- `GeometryCache` — `get(key, mesh)` uploads once per key and returns `std::shared_ptr<const Geometry>` handles whose deleter routes destruction through `engine.defer_destroy()`; `erase(key)` drops the cache reference (outstanding handles stay valid). Handles must not outlive the engine.
 - `Shader::load(stage, spirv_path)` — loads SPIR-V from file
 - `Vertex` — `vec3 position` + `vec3 normal` + `vec3 color` (36 bytes)
 
